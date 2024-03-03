@@ -1,7 +1,10 @@
+# from django.conf import settings
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from chatbotapi.settings import *
 
 from .models import *
 
@@ -11,6 +14,7 @@ from .models import *
 class StartConvUserView(APIView):
 
     def get(self, request):
+        print("check the api key is here ", Open_AI_API_KEY)
         print("get method is called", request.data)
         data = request.data
         if data.get("ip"):
@@ -172,10 +176,11 @@ class StartChat(APIView):
                     )
 
                 def main():
-                    openai.api_key = (
-                        "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"
-                    )
-
+                    # openai.api_key = (
+                    #     "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"
+                    # )
+                    print("in conver api key is here ", Open_AI_API_KEY)
+                    openai.api_key = Open_AI_API_KEY
                     print(
                         "Bot: Hello! Welcome to GNS CPAs. How can I assist you today?\nOptions: Accounting, Tax, Audit, Bookkeeping, Payroll"
                     )
