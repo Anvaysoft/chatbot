@@ -10,6 +10,10 @@ from .models import *
 
 # Create your views here.
 
+# Here is user chat limit
+
+User_chat_limit = 5
+
 
 class StartConvUserView(APIView):
 
@@ -22,7 +26,7 @@ class StartConvUserView(APIView):
             if UserDataLog.objects.filter(user_ip=str(data.get("ip"))).exists():
                 user_conve_check = UserDataLog.objects.get(user_ip=str(data.get("ip")))
                 print("user_conve_check.limit", user_conve_check.limit)
-                if user_conve_check.limit == 0:
+                if user_conve_check.limit < User_chat_limit:
                     return Response(
                         {"msg": "Start Conversation"}, status=status.HTTP_200_OK
                     )
@@ -55,6 +59,7 @@ class StartConvUserView(APIView):
             )
 
 
+import os
 import warnings
 
 import openai
@@ -76,15 +81,14 @@ class StartChat(APIView):
             get_user_ip = data.get("ip")
             get_user_questions = data.get("ques")
             user_details = UserDataLog.objects.get(user_ip=get_user_ip)
-            if user_details.limit < 200:
-
+            if user_details.limit < User_chat_limit:
                 # Conve ML Part is here
 
                 warnings.filterwarnings("ignore")
 
                 def get_intent(user_input):
                     prompt = f"""
-                    Analyze the following user input and determine the most likely purchase intent of the user. The user said:
+                    Analyze the following user input and determine the most likely purchase intent of the user and return only intent name from given option. The user said:
                     '{user_input}'
 
                     Possible Intents:
@@ -100,6 +104,7 @@ class StartChat(APIView):
                         messages=[{"role": "user", "content": prompt}],
                     )
                     intent = response.choices[0].message["content"].strip()
+                    print(intent)
                     return intent
 
                 def get_response(intent, user_query):
@@ -122,8 +127,10 @@ class StartChat(APIView):
                             temperature=0,
                             openai_api_key=openai.api_key,
                         )
-
-                        doc_loader = TextLoader("./GNS Prices.txt")
+                        file_path = os.path.join(
+                            os.path.dirname(__file__), "GNS Prices.txt"
+                        )
+                        doc_loader = TextLoader(file_path)
                         documents = doc_loader.load()
 
                         text_splitter = CharacterTextSplitter(chunk_overlap=0)
@@ -189,6 +196,7 @@ class StartChat(APIView):
                     # end_conversation = False
                     # while interaction_count < 3 and not end_conversation:
                     # user_input = input("User: ")
+                    print("user input is here check", get_user_questions)
                     intent = get_intent(get_user_questions)
 
                     if intent == "goodbye":
@@ -198,41 +206,61 @@ class StartChat(APIView):
                         response = "Thank you for visiting GNS CPAs. Have a great day!"
                         return response
                     elif intent == "greeting":
-                        response = get_response(intent, get_user_questions)
+                        # response = get_response(intent, get_user_questions)
+                        print("Bot: Hello! How I can help you?")
                         print("second elif condition is working....")
+                        response = "Hello! How I can help you?"
                         print(f"Bot: {response}")
                         return response
                     elif intent == "initiate_contact_or_schedule_meeting":
                         print("third elif condition is working....")
                         response = "ask data to user"
                         return response
-                        consent_given = collect_user_consent()
-                        if consent_given:
-                            email, phone = collect_contact_info()
+                        # consent_given = collect_user_consent()
+                        # if consent_given:
+                        #     email, phone = collect_contact_info()
+                    else:
+                        print("+1 limit")
+                        response = get_response(intent, get_user_questions)
+                        print(f"Bot: {response}")
+                        user_details.limit += 1
+                        user_details.save()
+                        return response
+                        # interaction_count += 1
 
                 bot_ans = main()
 
                 if bot_ans == "ask data to user":
                     print("in if condition is working")
-                    user_details.limit = 200
-                    user_details.save()
                     return Response(
                         {"msg": "Answer of the questions", "ask": "User Data"},
                         status=status.HTTP_200_OK,
                     )
 
                 print("process the question is here")
-                user_details.limit += 1
-                user_details.save()
+
                 return Response(
                     {"msg": "Answer of the questions", "Answer": bot_ans},
                     status=status.HTTP_200_OK,
                 )
             else:
-                return Response(
-                    {"msg": "Conversation limit reached", "ask": "User Data"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+
+                print("user data is here also", user_details)
+                print("user data is here also", user_details.email)
+                print("user data is here also", user_details.phone)
+
+                if user_details.email and user_details.phone:
+                    print("in if conditions")
+                    return Response(
+                        {"msg": "Conversation limit reached"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                else:
+                    print("in else conditions")
+                    return Response(
+                        {"msg": "Conversation limit reached", "ask": "User Data"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
         else:
             return Response(
                 {"msg": "Need user Ip address and ques both"},
@@ -248,7 +276,7 @@ class UserDataSave(APIView):
             print("chekc ip ", get_user_ip)
             userdata = UserDataLog.objects.get(user_ip=get_user_ip)
             print("check the user datad a", userdata.limit)
-            if userdata.limit <= 200:
+            if userdata.limit <= User_chat_limit:
                 userdata.email = str(data.get("email"))
                 userdata.phone = str(data.get("phone"))
                 userdata.save()
@@ -271,7 +299,6 @@ class UserDataSave(APIView):
 
 
 class UserDatareset(APIView):
-
     def post(self, request):
         data = request.data
         if data.get("ip"):
